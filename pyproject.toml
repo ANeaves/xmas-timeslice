@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xmas-timeslice"
+description = "Mini Timeslice using ESP32 Cameras for the Snowglobe contest"
+dynamic = ["version"]
+requires-python = ">= 3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "odin-control>=2.0",
+]
+readme = "README.md"
+authors = [
+    {name = "Ashley Neaves", email = "ashley.neaves@stfc.ac.uk" },
+]
+
+[project.urls]
+GitHub = "https://github.com/ANeaves/xmas-timeslice"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Optional settings for setuptools_scm
+root = "."
+write_to = "src/xmas_timeslice/_version.py"
+version_scheme = "no-guess-dev"
+local_scheme = "node-and-date"
