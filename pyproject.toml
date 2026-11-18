@@ -20,6 +20,8 @@ classifiers = [
 ]
 dependencies = [
     "odin-control>=2.0",
+    "requests",
+    "gpiozero"
 ]
 readme = "README.md"
 authors = [

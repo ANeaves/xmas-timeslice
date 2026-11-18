@@ -1,8 +1,11 @@
 """Controller Module for Xmas Timeslice."""
 
 import logging
+from os import path
 from odin_control.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from odin_control.adapters.base_controller import BaseController, BaseError
+
+from xmas_timeslice.camera import Camera, CameraError
 
 
 class XmasTimesliceError(BaseError):
@@ -18,16 +21,66 @@ class XmasTimesliceController(BaseController):
         :param options: Dictionary containing configuration options for the controller.
         """
         self.options = options
-        self.example_param = "Example"
+
+        self.camera_base_ip = options.get("base_ip", "192.168.4")
+        self.image_dir = options.get("image_dir", "test/images")
+
+        self.cameras = [
+            Camera(num=i + 1, base_ip=self.camera_base_ip, image_dir=self.image_dir)
+            for i in range(8)
+        ]
 
         tree = {
-            "example_param": (
-                lambda: self.example_param,
-                lambda v: setattr(self, 'example_param', v),
-                {"description": "Example Parameter for Template"}
-            )
+            "cams": {
+                f"camera_{camera.number}": {
+                    "status": (lambda cam=camera: cam.shot_status, None),
+                    "control": {
+                        "arm": (
+                            None,
+                            lambda v, cam=camera: cam.arm(v),
+                            {"description": "Arm or disarm the camera"},
+                        ),
+                        "exposure_lock": (
+                            lambda cam=camera: cam.shot_status.get("locked", False),
+                            lambda v, cam=camera: cam.lock_exposure(v),
+                            {
+                                "description": "Lock or unlock the camera's Exposue, White Balance, and Gain. This can speed up camera arming."
+                            },
+                        ),
+                        "trigger": (
+                            None,
+                            lambda _, cam=camera: cam.trigger(),
+                            {
+                                "description": "Use the software trigger to take an image."
+                            },
+                        )
+                    },
+                }
+                for camera in self.cameras
+            },
         }
         self.param_tree = ParameterTree(tree)
+
+    def get_data(self, path: str):
+        """Get non-json data, such as images or other binary objects."""
+        try:
+            splitpath = path.split("/", 1)
+            match splitpath[0]:
+                case "image":
+                    return self.get_image(int(splitpath[1])), "jpeg"
+                case _:
+                    raise XmasTimesliceError(f"Unknown Data Path: {path}")
+        except Exception as err:
+            # TODO: more explicit error handling
+            raise XmasTimesliceError(err)
+
+    def get_image(self, cam_num: int):
+        """Return the image data from the camera."""
+        try:
+            data = self.cameras[cam_num - 1].get_image()
+            return data
+        except CameraError as err:
+            raise XmasTimesliceError(err)
 
     def initialize(self, adapters):
         """Initialize the controller with access to other adapters.
@@ -49,6 +102,8 @@ class XmasTimesliceController(BaseController):
         is being stopped or destroyed.
         """
         logging.info("Cleaning up XmasTimesliceController")
+        for camera in self.cameras:
+            camera.cleanup()
 
     def get(self, path, with_metadata=False):
         """Get data from the controller at the specified path.
@@ -58,9 +113,10 @@ class XmasTimesliceController(BaseController):
 
         :return: The requested data, format depends on controller implementation.
         """
+        logging.debug(f"Adapter GET: {path}")
         try:
             return self.param_tree.get(path, with_metadata)
-        except ParameterTreeError as error:
+        except (ParameterTreeError, CameraError) as error:
             logging.error(error)
             raise XmasTimesliceError(error)
 
@@ -72,6 +128,6 @@ class XmasTimesliceController(BaseController):
         """
         try:
             self.param_tree.set(path, data)
-        except ParameterTreeError as error:
+        except (ParameterTreeError, CameraError) as error:
             logging.error(error)
             raise XmasTimesliceError(error)
