@@ -22,11 +22,17 @@ class XmasTimesliceController(BaseController):
         """
         self.options = options
 
-        self.camera_base_ip = options.get("base_ip", "192.168.4")
+        camera_base_ip = options.get("base_ip", "192.168.4")
+        camera_admin_password = options.get("admin_pass", "change-me-ota")
         self.image_dir = options.get("image_dir", "test/images")
 
         self.cameras = [
-            Camera(num=i + 1, base_ip=self.camera_base_ip, image_dir=self.image_dir)
+            Camera(
+                num=i,
+                base_ip=camera_base_ip,
+                image_dir=self.image_dir,
+                admin_pass=camera_admin_password,
+            )
             for i in range(8)
         ]
 
@@ -40,8 +46,15 @@ class XmasTimesliceController(BaseController):
                             lambda v, cam=camera: cam.arm(v),
                             {"description": "Arm or disarm the camera"},
                         ),
+                        "auto_disarm": (
+                            lambda cam=camera: cam.idle_s,
+                            lambda v, cam=camera: cam.set_config({"idle_s": v}),
+                            {
+                                "description": "Number of seconds the camera remains Armed. 0 will disable the auto-disarm functionality. Setting this value will reboot the camera to take effect."
+                            },
+                        ),
                         "exposure_lock": (
-                            lambda cam=camera: cam.shot_status.get("locked", False),
+                            lambda cam=camera: cam.exposure_locked,
                             lambda v, cam=camera: cam.lock_exposure(v),
                             {
                                 "description": "Lock or unlock the camera's Exposue, White Balance, and Gain. This can speed up camera arming."
@@ -53,10 +66,33 @@ class XmasTimesliceController(BaseController):
                             {
                                 "description": "Use the software trigger to take an image."
                             },
-                        )
+                        ),
                     },
                 }
                 for camera in self.cameras
+            },
+            "control": {
+                "arm_all": (
+                    lambda: all(
+                        [
+                            cam.shot_status.get("state", "disconencted")
+                            in ["armed", "arming", "capturing"]
+                            for cam in self.cameras
+                        ]
+                    ),
+                    self.arm_all,
+                    {"description": "Arm or disarm all the connected cameras"},
+                ),
+                "lock_all": (
+                    lambda: all([cam.exposure_locked for cam in self.cameras]),
+                    self.lock_all,
+                    {"description": "Lock or unlock all the camera exposures"}
+                ),
+                "trigger_all": (
+                    None,
+                    lambda _: self.trigger_all(),
+                    {"description": "Take a picture with all the cameras, using the software trigger"}
+                )
             },
         }
         self.param_tree = ParameterTree(tree)
@@ -131,3 +167,18 @@ class XmasTimesliceController(BaseController):
         except (ParameterTreeError, CameraError) as error:
             logging.error(error)
             raise XmasTimesliceError(error)
+
+    def arm_all(self, arm: bool):
+        """Arm or disarm all the connected cameras."""
+        for cam in self.cameras:
+            cam.arm(arm)
+
+    def lock_all(self, lock: bool):
+        """Lock or Unlock exposure on all connected cameras."""
+        for cam in self.cameras:
+            cam.lock_exposure(lock)
+
+    def trigger_all(self):
+        """Use the software trigger to trigger all cameras to take a picture."""
+        for cam in self.cameras:
+            cam.trigger()
